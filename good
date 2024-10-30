@@ -1,0 +1,172 @@
+SELECT 
+    MAX(te.created_date) AS "Дата и время последней работы",
+    te.task_id AS "Задача",
+    te.user_name AS "Сотрудник",
+    date_format(from_unixtime(SUM(te.elapsed_time)), '%H:%i') AS "Сумма работы за день",
+    SUM(te.elapsed_time) / 60 AS "Сумма работы за день (в минутах)",
+    DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) AS "День работы",
+    week_of_year(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) AS "Неделя",
+    CASE
+        WHEN month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) = 1 THEN '01.Январь'
+        WHEN month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) = 2 THEN '02.Февраль'
+        WHEN month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) = 3 THEN '03.Март'
+        WHEN month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) = 4 THEN '04.Апрель'
+        WHEN month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) = 5 THEN '05.Май'
+        WHEN month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) = 6 THEN '06.Июнь'
+        WHEN month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) = 7 THEN '07.Июль'
+        WHEN month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) = 8 THEN '08.Август'
+        WHEN month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) = 9 THEN '09.Сентябрь'
+        WHEN month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) = 10 THEN '10.Октябрь'
+        WHEN month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) = 11 THEN '11.Ноябрь'
+        WHEN month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) = 12 THEN '12.Декабрь'
+    END AS "Месяц",
+    CASE
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Monday' THEN '1.Понедельник'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Tuesday' THEN '2.Вторник'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Wednesday' THEN '3.Среда'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Thursday' THEN '4.Четверг'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Friday' THEN '5.Пятница'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Saturday' THEN '6.Суббота'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Sunday' THEN '7.Воскресенье'
+    END AS "День недели",
+    '<a href="https://bitrix24.kompo.by/workgroups/group/13/tasks/task/view/' || CAST(te.task_id AS VARCHAR) || '/" target="_blank">' || t.title || '</a>' AS "Название задачи",
+    CASE
+        WHEN t.closed_date <= t.deadline AND crm.stage_name = 'Завершено' 
+            THEN 1
+        WHEN t.closed_date <= t.deadline AND crm.stage_name = 'Ждет проверки' AND t.status = 'Завершена'
+            THEN 2
+        WHEN t.closed_date IS NOT NULL AND t.closed_date > t.deadline 
+            THEN 3
+        WHEN t.closed_date IS NULL AND t.deadline < CURRENT_DATE 
+            THEN 4
+        ELSE 5
+    END AS "СТАТУСС",
+    CASE
+        WHEN t.closed_date <= t.deadline AND crm.stage_name = 'Завершено' 
+            THEN 'Задача закрыта вовремя до наступления "ДЕДЛАЙН" и с оценкой'
+        WHEN t.closed_date <= t.deadline AND crm.stage_name = 'Ждет проверки' AND t.status = 'Завершена'
+            THEN 'Задача закрыта вовремя до наступления "ДЕДЛАЙН" но пока без оценки'
+        WHEN t.closed_date IS NOT NULL AND t.closed_date > t.deadline 
+            THEN 'Задача закрыта ПРОСРОЧЕННОЙ"'
+        WHEN t.closed_date IS NULL AND t.deadline < CURRENT_DATE 
+            THEN 'Задача ПОСРОЧЕНА и в РАБОТЕ'
+        ELSE 'Еще в работе'
+    END AS "СТАТУС",
+    t.status AS "Статус задачи",
+    crm.stage_name AS "Статус в ТИКЕТАХ",
+    t.stage_name AS "Приоритет",
+    t.created_date AS "Дата создания",
+    t.deadline AS "ДЕДЛАЙН", 
+    t.closed_date AS "Дата закрытия",
+    concat(cast(floor(t.time_estimate / 3600) as varchar), ':', lpad(cast(mod(t.time_estimate, 3600) / 60 as varchar), 2, '0')) AS "ПЛАН",
+    concat(cast(floor(t.time_spent_in_logs / 3600) as varchar), ':', lpad(cast(mod(t.time_spent_in_logs, 3600) / 60 as varchar), 2, '0')) AS "ФАКТ",
+    CASE
+        WHEN t.time_estimate - t.time_spent_in_logs >= 0 THEN
+            concat(cast(floor((t.time_estimate - t.time_spent_in_logs) / 3600) as varchar), ':', lpad(cast(mod((t.time_estimate - t.time_spent_in_logs), 3600) / 60 as varchar), 2, '0'))
+        ELSE
+            concat('-', cast(floor((t.time_spent_in_logs - t.time_estimate) / 3600) as varchar), ':', lpad(cast(mod((t.time_spent_in_logs - t.time_estimate), 3600) / 60 as varchar), 2, '0'))
+    END AS "ОСТАТОК",
+    crm.created_by_name AS "Автор",
+    crm.uf_sla_block_str AS "Предметная область",
+    crm.uf_sla_service_str AS "Объект",
+    crm.uf_action_str AS "Действие",
+    CASE
+        WHEN crm.uf_grade = 'не выбрано' THEN NULL
+        ELSE CAST(crm.uf_grade AS DECIMAL)
+    END AS "ОЦЕНКА"
+FROM task_elapsed_time te
+INNER JOIN task t ON te.task_id = t.id
+INNER JOIN
+    crm_dynamic_items_140 AS crm
+    ON CAST(te.task_id AS VARCHAR) = crm.uf_crm_7_task_id
+WHERE t.tags LIKE '%сервис-деск%'
+GROUP BY date(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), week_of_year(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), month(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), te.task_id, te.user_name, t.title, t.status, t.stage_name, t.created_date, t.deadline, t.closed_date, t.time_estimate, t.time_spent_in_logs, crm.created_by_name, crm.stage_name, crm.uf_sla_block_str, crm.uf_sla_service_str, crm.uf_action_str, crm.uf_grade
+ORDER BY "Дата и время последней работы" DESC;
+
+
+
+
+
+SELECT 
+    te.task_id AS "Задача",
+    DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) AS "Дата работы", -- Преобразование в TIMESTAMP и выбор только даты
+    te.user_name AS "Сотрудник",
+    SUM(CAST(te.elapsed_time AS DECIMAL(10, 2)) / 3600.0) AS "Сумма за день (ч.)", -- Сумма затрат времени в часах
+    '<a href="https://bitrix24.kompo.by/workgroups/group/13/tasks/task/view/' || CAST(te.task_id AS VARCHAR) || '/" target="_blank">' || t.title || '</a>' AS "Название задачи",
+    week_of_year(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')) AS "Неделя", -- Извлечение номера недели
+    format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') AS "Month", -- Извлечение названия месяца
+    CASE
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') = 'January' THEN '01.Январь'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') = 'February' THEN '02.Февраль'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') = 'March' THEN '03.Март'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') = 'April' THEN '04.Апрель'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') = 'May' THEN '05.Май'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') = 'June' THEN '06.Июнь'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') = 'July' THEN '07.Июль'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') = 'August' THEN '08.Август'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') = 'September' THEN '09.Сентябрь'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') = 'October' THEN '10.Октябрь'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') = 'November' THEN '11.Ноябрь'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM') = 'December' THEN '12.Декабрь'
+    END AS "Месяц",
+    CASE
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Monday' THEN '1.Понедельник'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Tuesday' THEN '2.Вторник'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Wednesday' THEN '3.Среда'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Thursday' THEN '4.Четверг'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Friday' THEN '5.Пятница'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Saturday' THEN '6.Суббота'
+        WHEN format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE') = 'Sunday' THEN '7.Воскресенье'
+    END AS "День недели",
+    t.status AS "Статус задачи",
+    t.stage_name AS "Приоритет",
+    t.created_date AS "Дата создания",
+    t.deadline AS "ДЕДЛАЙН",
+    t.closed_date AS "Дата закрытия",
+    CAST(t.time_estimate AS DECIMAL(10, 2)) / 3600.0 AS "ПЛАН",
+    CAST(t.time_spent_in_logs AS DECIMAL(10, 2)) / 3600.0 AS "ФАКТ",
+    (CAST(t.time_estimate AS DECIMAL(10, 2)) - CAST(t.time_spent_in_logs AS DECIMAL(10, 2))) / 3600.0 AS "ОСТАТОК",
+    crm.created_by_name AS "Автор",
+    element_at(split(u.department, '/'), cardinality(split(u.department, '/'))) AS "Отдел заказчика", -- Взятие последней части строки
+    crm.stage_name AS "Статус в ТИКЕТАХ",
+    crm.uf_sla_block_str AS "Предметная область",
+    crm.uf_sla_service_str AS "Объект",
+    crm.uf_action_str AS "Действие",
+    crm.uf_grade AS "ОЦЕНКА"
+FROM 
+    task_elapsed_time AS te
+INNER JOIN 
+    task AS t 
+    ON te.task_id = t.id
+INNER JOIN
+    crm_dynamic_items_140 AS crm
+    ON CAST(te.task_id AS VARCHAR) = crm.uf_crm_7_task_id
+INNER JOIN
+    user AS u
+    ON crm.created_by_name = u.name
+WHERE 
+    t.tags = 'сервис-деск'
+GROUP BY 
+    te.task_id,
+    DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), -- Группировка по дате без учета времени
+    te.user_name,
+    t.title,
+    week_of_year(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')),
+    format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'MMMM'), -- Группировка по месяцу
+    format_datetime(DATE(DATE_PARSE(te.created_date, '%Y-%m-%d %H:%i:%s')), 'EEEE'),
+    t.status,
+    t.stage_name,
+    t.created_date,
+    t.deadline,
+    t.closed_date,
+    t.time_estimate,
+    t.time_spent_in_logs,
+    crm.created_by_name,
+    crm.stage_name,
+    crm.uf_sla_block_str,
+    crm.uf_sla_service_str,
+    crm.uf_action_str,
+    crm.uf_grade,
+    u.department
+ORDER BY 
+    "Дата работы" DESC;
